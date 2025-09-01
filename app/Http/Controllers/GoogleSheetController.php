@@ -1794,7 +1794,7 @@ class GoogleSheetController extends Controller
             }
 
             // 5. Create campaign
-            $this->createCampaignWithData($formOrderId, $device, $csName, $produk, $keteranganBlasting, $waktuBlasting, $messageTemplate, $contactsData);
+            $this->createCampaignWithData($formOrderId, $device, $csName, $produk, $keteranganBlasting, $waktuBlasting, $messageTemplate, $contactsData, $img);
 
             Log::info("Successfully created auto-campaign for form_order_id: {$formOrderId}");
         } catch (\Exception $e) {
@@ -2331,7 +2331,7 @@ class GoogleSheetController extends Controller
     /**
      * Create campaign with data
      */
-    private function createCampaignWithData($formOrderId, $device, $csName, $produk, $keteranganBlasting, $waktuBlasting, $messageTemplate, $contactsData)
+    private function createCampaignWithData($formOrderId, $device, $csName, $produk, $keteranganBlasting, $waktuBlasting, $messageTemplate, $contactsData, $img = null)
     {
         try {
             // Parse schedule time
@@ -2344,28 +2344,72 @@ class GoogleSheetController extends Controller
                 }
             }
 
-            // Ensure message template is a string before encoding
-            if (is_array($messageTemplate) || is_object($messageTemplate)) {
-                $messageTemplate = json_encode($messageTemplate);
-            }
+            // Determine campaign type and message format
+            $campaignType = 'text';
+            $campaignMessage = $messageTemplate;
 
-            // If message template is already JSON, decode it first
-            $decodedTemplate = json_decode($messageTemplate, true);
-            if (json_last_error() === JSON_ERROR_NONE && is_string($decodedTemplate)) {
-                // It's already JSON-encoded string, use as-is for json_encode
-                Log::info("Message template is already JSON-encoded string");
-            } elseif (json_last_error() === JSON_ERROR_NONE && is_array($decodedTemplate)) {
-                // It's a JSON object/array, encode it properly
-                $messageTemplate = json_encode($decodedTemplate);
-                Log::info("Message template was JSON object/array, re-encoded");
+            if (!empty($img)) {
+                $campaignType = 'media';
+                Log::info("IMG found: {$img}, setting campaign type to 'media'");
+
+                // Search for image file in Konten folder based on CS name
+                $imageFilePath = $this->findImageFileByCsName($csName);
+                if ($imageFilePath) {
+                    $fileName = basename($imageFilePath);
+                    $filePath = $imageFilePath;
+                    Log::info("Found image file for CS {$csName}: {$fileName}");
+                } else {
+                    // Fallback to original logic if no file found
+                    $fileName = basename($img);
+                    $filePath = storage_path('app/public/files/1/Konten/' . $fileName);
+                    Log::warning("No image file found for CS {$csName}, using fallback: {$fileName}");
+                }
+
+                // Ensure message template is properly formatted
+                if (is_array($messageTemplate) && isset($messageTemplate['text'])) {
+                    $captionText = $messageTemplate['text'];
+                } elseif (is_string($messageTemplate)) {
+                    $captionText = $messageTemplate;
+                } else {
+                    $captionText = '';
+                }
+
+                $campaignMessage = [
+                    'url' => $filePath,
+                    'type' => 'image',
+                    'caption' => $captionText,
+                    'filename' => $fileName
+                ];
+
+                Log::info("Media campaign message: " . json_encode($campaignMessage));
             } else {
-                // It's a plain string, convert to MessageService format (array with 'text' key)
-                $messageTemplate = ['text' => $messageTemplate];
-                Log::info("Message template converted to MessageService format: " . json_encode($messageTemplate));
+                Log::info("No IMG found, using text campaign type");
+
+                // Ensure message template is a string before encoding
+                if (is_array($messageTemplate) || is_object($messageTemplate)) {
+                    $messageTemplate = json_encode($messageTemplate);
+                }
+
+                // If message template is already JSON, decode it first
+                $decodedTemplate = json_decode($messageTemplate, true);
+                if (json_last_error() === JSON_ERROR_NONE && is_string($decodedTemplate)) {
+                    // It's already JSON-encoded string, use as-is for json_encode
+                    Log::info("Message template is already JSON-encoded string");
+                } elseif (json_last_error() === JSON_ERROR_NONE && is_array($decodedTemplate)) {
+                    // It's a JSON object/array, encode it properly
+                    $messageTemplate = json_encode($decodedTemplate);
+                    Log::info("Message template was JSON object/array, re-encoded");
+                } else {
+                    // It's a plain string, convert to MessageService format (array with 'text' key)
+                    $messageTemplate = ['text' => $messageTemplate];
+                    Log::info("Message template converted to MessageService format: " . json_encode($messageTemplate));
+                }
+
+                $campaignMessage = $messageTemplate;
             }
 
-            Log::info("Final message template for campaign: " . json_encode($messageTemplate));
-            Log::info("Message template type: " . gettype($messageTemplate));
+            Log::info("Final message template for campaign: " . json_encode($campaignMessage));
+            Log::info("Message template type: " . gettype($campaignMessage));
 
             // Create campaign
             $campaign = Campaign::create([
@@ -2374,9 +2418,9 @@ class GoogleSheetController extends Controller
                 'device_id' => $device->id,
                 'name' => "[{$formOrderId}] {$csName} - {$produk} - {$keteranganBlasting}",
                 'phonebook_id' => 1, // Default phonebook
-                'type' => 'text', // Default type
+                'type' => $campaignType, // Use determined campaign type
                 'status' => 'waiting',
-                'message' => json_encode($messageTemplate),
+                'message' => json_encode($campaignMessage),
                 'schedule' => $scheduleTime,
                 'delay' => 5 // Default delay
             ]);
@@ -2389,17 +2433,34 @@ class GoogleSheetController extends Controller
                 foreach ($contactsData as $contact) {
                     // Format message with contact data
                     Log::info("Processing contact for blast: " . json_encode($contact));
-                    $formattedMessage = $this->formatMessageWithContactData($messageTemplate, $contact);
 
-                    Log::info("Final formatted message for blast: " . json_encode($formattedMessage));
+                    if ($campaignType === 'media') {
+                        // For media campaigns, format message with contact data in caption
+                        $formattedMessage = $this->formatMessageWithContactData($campaignMessage, $contact);
+
+                        // Update caption with formatted text - use 'caption' key for media messages
+                        $blastMessage = [
+                            'url' => $campaignMessage['url'],
+                            'type' => $campaignMessage['type'],
+                            'caption' => $formattedMessage['caption'] ?? $campaignMessage['caption'],
+                            'filename' => $campaignMessage['filename']
+                        ];
+
+                        Log::info("Media blast message: " . json_encode($blastMessage));
+                    } else {
+                        // For text campaigns, use normal formatting
+                        $formattedMessage = $this->formatMessageWithContactData($campaignMessage, $contact);
+                        $blastMessage = $formattedMessage;
+                        Log::info("Text blast message: " . json_encode($blastMessage));
+                    }
 
                     $blasts[] = [
                         'user_id' => $device->user_id,
                         'sender' => $device->body, // Device body sebagai sender
                         'status' => 'pending',
                         'receiver' => $contact['phone'] ?? '',
-                        'type' => 'text',
-                        'message' => json_encode($formattedMessage),
+                        'type' => $campaignType, // Use same type as campaign
+                        'message' => json_encode($blastMessage),
                         'created_at' => now(),
                         'updated_at' => now()
                     ];
@@ -2432,7 +2493,22 @@ class GoogleSheetController extends Controller
         Log::info("Contact data: " . json_encode($contactData));
 
         // Handle different template formats
-        if (is_array($template) && isset($template['text'])) {
+        if (is_array($template) && isset($template['caption'])) {
+            // Media message format - only format the caption
+            $messageText = $template['caption'];
+            Log::info("Extracted caption from media message: {$messageText}");
+
+            // Process caption with placeholders
+            $formattedCaption = $this->processPlaceholders($messageText, $contactData);
+
+            // Return media message with formatted caption
+            return [
+                'url' => $template['url'],
+                'type' => $template['type'],
+                'caption' => $formattedCaption,
+                'filename' => $template['filename']
+            ];
+        } elseif (is_array($template) && isset($template['text'])) {
             $messageText = $template['text'];
             Log::info("Extracted message text from array: {$messageText}");
         } elseif (is_string($template)) {
@@ -2443,6 +2519,20 @@ class GoogleSheetController extends Controller
             return ['text' => 'Error: Invalid template format'];
         }
 
+        // Process placeholders in the message
+        $formatted = $this->processPlaceholders($messageText, $contactData);
+
+        Log::info("Final formatted message: {$formatted}");
+
+        // Return in MessageService format (array with 'text' key)
+        return ['text' => $formatted];
+    }
+
+    /**
+     * Process placeholders in message text
+     */
+    private function processPlaceholders($messageText, $contactData)
+    {
         // Replace {{A}}, {{B}}, etc. with actual contact data
         // A = Phone Number, B = Nama Customer, C = Produk, D = No. Resi, etc.
         $columnMapping = [
@@ -2480,7 +2570,9 @@ class GoogleSheetController extends Controller
             } else {
                 Log::info("No replacement needed for {{$placeholder}} (value: '{$value}')");
             }
-        }        // Check for any remaining placeholders and log them
+        }
+
+        // Check for any remaining placeholders and log them
         preg_match_all('/\{\{([A-Z])\}\}/', $formatted, $matches);
         if (!empty($matches[1])) {
             Log::warning("Unreplaced placeholders found: " . implode(', ', $matches[1]));
@@ -2495,9 +2587,64 @@ class GoogleSheetController extends Controller
             Log::info("All placeholders successfully replaced");
         }
 
-        Log::info("Final formatted message: {$formatted}");
+        return $formatted;
+    }
 
-        // Return in MessageService format (array with 'text' key)
-        return ['text' => $formatted];
+    /**
+     * Find image file in Konten folder based on CS name
+     */
+    private function findImageFileByCsName($csName)
+    {
+        try {
+            $kontenPath = storage_path('app/public/files/1/Konten');
+            Log::info("Searching for image file in Konten folder: {$kontenPath} for CS: {$csName}");
+
+            if (!is_dir($kontenPath)) {
+                Log::warning("Konten folder does not exist: {$kontenPath}");
+                return null;
+            }
+
+            // Get all files in Konten folder
+            $files = scandir($kontenPath);
+            $imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+
+            // Search for files that match CS name (case-insensitive)
+            $csNameLower = strtolower(trim($csName));
+            Log::info("Searching for files matching CS name: {$csNameLower}");
+
+            foreach ($files as $file) {
+                if ($file === '.' || $file === '..') {
+                    continue;
+                }
+
+                $filePath = $kontenPath . '/' . $file;
+                if (!is_file($filePath)) {
+                    continue;
+                }
+
+                // Check if file has image extension
+                $fileExtension = strtolower(pathinfo($file, PATHINFO_EXTENSION));
+                if (!in_array($fileExtension, $imageExtensions)) {
+                    continue;
+                }
+
+                // Check if filename matches CS name (without extension)
+                $fileNameWithoutExt = strtolower(pathinfo($file, PATHINFO_FILENAME));
+                Log::info("Checking file: {$file} (name without ext: {$fileNameWithoutExt})");
+
+                // Exact match or contains CS name
+                if ($fileNameWithoutExt === $csNameLower || strpos($fileNameWithoutExt, $csNameLower) !== false) {
+                    Log::info("Found matching image file: {$file} for CS: {$csName}");
+                    return $filePath;
+                }
+            }
+
+            Log::warning("No image file found matching CS name: {$csName} in folder: {$kontenPath}");
+            return null;
+
+        } catch (\Exception $e) {
+            Log::error("Error searching for image file: " . $e->getMessage());
+            return null;
+        }
     }
 }
