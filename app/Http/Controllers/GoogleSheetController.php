@@ -190,7 +190,7 @@ class GoogleSheetController extends Controller
                             if (strtolower(trim($device->status)) === 'connected') {
                                 $row['device_status'] = 'connected';
                                 $row['row_class'] = ''; // Normal row (no additional class)
-                                
+
                                 // Auto-create campaign if connected and not exists
                                 $this->autoCreateCampaignIfNeeded($row, $device);
                             } else {
@@ -291,7 +291,6 @@ class GoogleSheetController extends Controller
                 'last_updated' => now()->toDateTimeString(),
                 'info' => 'Form Order data displayed with headers from row 1 and data from row 2+'
             ]);
-
         } catch (\Exception $e) {
             $errorMessage = $e->getMessage();
 
@@ -586,7 +585,7 @@ class GoogleSheetController extends Controller
                     if (isset($sampleData[2]) && !empty($sampleData[2])) { // Row 3 (index 2)
                         $subHeaders = array_slice($sampleData[2], 1, 4); // B3-E3
                         // Combine main headers with subheaders
-                        $firstTableHeaders = array_map(function($main, $sub) {
+                        $firstTableHeaders = array_map(function ($main, $sub) {
                             return trim($main . ' ' . $sub);
                         }, $firstTableHeaders, $subHeaders);
                     }
@@ -777,7 +776,6 @@ class GoogleSheetController extends Controller
                 'total_columns' => count($header),
                 'last_updated' => now()->toDateTimeString()
             ]);
-
         } catch (\Exception $e) {
             $errorMessage = $e->getMessage();
 
@@ -1340,10 +1338,9 @@ class GoogleSheetController extends Controller
             }
 
             return $isPreview ? response()->json($data) : view('sheet.file', $data);
-            
         } catch (\Exception $e) {
             $errorMessage = $e->getMessage();
-            
+
             // Handle specific error cases with better instructions
             if (strpos($errorMessage, 'not found') !== false) {
                 $errorData = [
@@ -1499,23 +1496,23 @@ class GoogleSheetController extends Controller
         try {
             // Get file info first
             $fileInfo = $service->files->get($fileId, ['fields' => 'name,mimeType,size']);
-            
+
             // Authorize client dan dapatkan access token
             $client->fetchAccessTokenWithAssertion();
             $accessToken = $client->getAccessToken()['access_token'];
-            
+
             // Buat HTTP request untuk download file
             $url = "https://www.googleapis.com/drive/v3/files/{$fileId}?alt=media";
-            
+
             $context = stream_context_create([
                 'http' => [
                     'method' => 'GET',
                     'header' => "Authorization: Bearer {$accessToken}\r\n"
                 ]
             ]);
-            
+
             $fileContent = file_get_contents($url, false, $context);
-            
+
             if ($fileContent === false) {
                 throw new \Exception('Failed to download file from Google Drive');
             }
@@ -1534,13 +1531,13 @@ class GoogleSheetController extends Controller
 
             // Load Excel file menggunakan Laravel Excel
             $data = Excel::toArray([], $tempFile);
-            
+
             // Hapus file temporary
             unlink($tempFile);
 
             // Ambil sheet pertama
             $sheetData = $data[0] ?? [];
-            
+
             if (empty($sheetData)) {
                 $errorData = [
                     'error' => 'Excel file is empty or could not be read',
@@ -1553,7 +1550,7 @@ class GoogleSheetController extends Controller
                 ];
                 return $isPreview ? response()->json($errorData) : view('sheet.file', $errorData);
             }
-            
+
             // Ambil header dari baris pertama
             $header = !empty($sheetData) ? $sheetData[0] : [];
             $rows = array_slice($sheetData, 1);
@@ -1580,10 +1577,9 @@ class GoogleSheetController extends Controller
             ];
 
             return $isPreview ? response()->json($viewData) : view('sheet.file', $viewData);
-
         } catch (\Exception $e) {
             $errorMessage = $e->getMessage();
-            
+
             // Handle specific error cases
             if (strpos($errorMessage, 'permission') !== false || strpos($errorMessage, 'forbidden') !== false) {
                 $errorData = [
@@ -1683,7 +1679,6 @@ class GoogleSheetController extends Controller
                     'Untuk melihat sheet: ' . $copiedFile->getWebViewLink()
                 ]
             ];
-
         } catch (\Exception $e) {
             return [
                 'error' => 'Error converting file: ' . $e->getMessage(),
@@ -1713,7 +1708,7 @@ class GoogleSheetController extends Controller
             // Get form_order_id from column A (first column)
             $rowValues = array_values($row);
             $formOrderId = $rowValues[0] ?? null;
-            
+
             if (empty($formOrderId)) {
                 Log::info("No form_order_id found in row for device: {$device->name}");
                 return;
@@ -1734,6 +1729,22 @@ class GoogleSheetController extends Controller
             $tanggal = $rowValues[5] ?? null; // Tanggal (column F)
             $waktuBlasting = $rowValues[6] ?? null; // WAKTU BLASTING (column G)
             $keteranganBlasting = $rowValues[7] ?? null; // KETERANGAN BLASTING (column H)
+            $typeCopyWriting = $rowValues[8] ?? null; // TYPE COPY WRITING (column I)
+            $textCopyWriting = $rowValues[9] ?? null; // TEXT COPY WRITING (column J)
+            $img = $rowValues[10] ?? null; // IMG (column K)
+
+            Log::info("Extracted FORM ORDER data:");
+            Log::info("- Form Order ID: {$formOrderId}");
+            Log::info("- CS Name: {$csName}");
+            Log::info("- Tim: {$tim}");
+            Log::info("- Produk: {$produk}");
+            Log::info("- Tanggal Hari Ini: {$tanggalHariIni}");
+            Log::info("- Tanggal: {$tanggal}");
+            Log::info("- Waktu Blasting: {$waktuBlasting}");
+            Log::info("- Keterangan Blasting: {$keteranganBlasting}");
+            Log::info("- Type Copy Writing: {$typeCopyWriting}");
+            Log::info("- Text Copy Writing: {$textCopyWriting}");
+            Log::info("- Full row data: " . json_encode($rowValues));
 
             if (empty($csName) || empty($produk) || empty($keteranganBlasting)) {
                 Log::info("Missing required data for campaign creation. CS: {$csName}, Produk: {$produk}, Keterangan: {$keteranganBlasting}");
@@ -1757,10 +1768,16 @@ class GoogleSheetController extends Controller
             }
 
             // 3. Get message template from settings-message
-            $messageTemplate = $this->getMessageTemplate($produk, $keteranganBlasting, $tim);
-            if (!$messageTemplate) {
-                Log::warning("Message template not found for Produk: {$produk}, Blasting: {$keteranganBlasting}");
-                return;
+            if ($typeCopyWriting == 'DATABASE') {
+                Log::info("typeCopyWriting is DATABASE");
+                $messageTemplate = $this->getMessageTemplate($produk, $keteranganBlasting, $tim);
+                if (!$messageTemplate) {
+                    Log::warning("Message template not found for Produk: {$produk}, Blasting: {$keteranganBlasting}");
+                    return;
+                }
+            } else {
+                Log::info("typeCopyWriting is TEXT");
+                $messageTemplate = $textCopyWriting;
             }
 
             // 4. Read Excel data for contacts
@@ -1770,11 +1787,16 @@ class GoogleSheetController extends Controller
                 return;
             }
 
+            Log::info("Contacts data summary:");
+            Log::info("- Total contacts found: " . count($contactsData));
+            foreach ($contactsData as $index => $contact) {
+                Log::info("- Contact " . ($index + 1) . ": Phone=" . ($contact['phone'] ?? 'N/A') . ", Name=" . ($contact['nama_customer'] ?? 'N/A'));
+            }
+
             // 5. Create campaign
             $this->createCampaignWithData($formOrderId, $device, $csName, $produk, $keteranganBlasting, $waktuBlasting, $messageTemplate, $contactsData);
 
             Log::info("Successfully created auto-campaign for form_order_id: {$formOrderId}");
-
         } catch (\Exception $e) {
             Log::error("Error in autoCreateCampaignIfNeeded: " . $e->getMessage());
         }
@@ -1792,6 +1814,8 @@ class GoogleSheetController extends Controller
             $client->addScope(Drive::DRIVE_READONLY);
             $driveService = new Drive($client);
 
+            Log::info("Searching for CS folder with name containing: {$csName}");
+
             // Search for folder with CS name
             $query = "name contains '{$csName}' and mimeType='application/vnd.google-apps.folder' and trashed=false";
             $results = $driveService->files->listFiles([
@@ -1800,10 +1824,17 @@ class GoogleSheetController extends Controller
             ]);
 
             $files = $results->getFiles();
+            Log::info("Found " . count($files) . " folders containing '{$csName}'");
+
             if (!empty($files)) {
+                foreach ($files as $file) {
+                    Log::info("Found CS folder: " . $file->getName() . " (ID: " . $file->getId() . ")");
+                }
+                Log::info("Using first folder: " . $files[0]->getName());
                 return $files[0]->getId();
             }
 
+            Log::warning("No CS folder found containing '{$csName}'");
             return null;
         } catch (\Exception $e) {
             Log::error("Error finding CS folder: " . $e->getMessage());
@@ -1823,6 +1854,8 @@ class GoogleSheetController extends Controller
             $client->addScope(Drive::DRIVE_READONLY);
             $driveService = new Drive($client);
 
+            Log::info("Searching for Excel file in folder: {$folderId}, blasting type: {$blastingType}");
+
             // Search for files in folder containing blasting type
             $query = "'{$folderId}' in parents and name contains '{$blastingType}' and trashed=false";
             $results = $driveService->files->listFiles([
@@ -1831,17 +1864,23 @@ class GoogleSheetController extends Controller
             ]);
 
             $files = $results->getFiles();
+            Log::info("Found " . count($files) . " files in folder {$folderId} containing '{$blastingType}'");
+
             foreach ($files as $file) {
+                Log::info("File found: " . $file->getName() . " (ID: " . $file->getId() . ", Type: " . $file->getMimeType() . ")");
+
                 // Check if it's Excel file
                 if (in_array($file->getMimeType(), [
                     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                     'application/vnd.ms-excel',
                     'application/vnd.google-apps.spreadsheet'
                 ])) {
+                    Log::info("Found matching Excel/Google Sheets file: " . $file->getName());
                     return $file->getId();
                 }
             }
 
+            Log::warning("No Excel/Google Sheets file found containing '{$blastingType}' in folder {$folderId}");
             return null;
         } catch (\Exception $e) {
             Log::error("Error finding Excel file: " . $e->getMessage());
@@ -1859,7 +1898,7 @@ class GoogleSheetController extends Controller
 
             // Read TIM JOGJA sheet data directly
             $settingsData = $this->getSettingsMessageData('TIM JOGJA');
-            
+
             if (empty($settingsData)) {
                 Log::warning("No settings data found for TIM JOGJA");
                 return null;
@@ -1869,12 +1908,23 @@ class GoogleSheetController extends Controller
             foreach ($settingsData as $row) {
                 if (isset($row['PRODUK']) && strtoupper(trim($row['PRODUK'])) === strtoupper(trim($produk))) {
                     Log::info("Found product row for: {$produk}");
-                    
+
                     // Found product row, now find blasting type column
                     if (isset($row[$blastingType])) {
                         $template = $row[$blastingType];
-                        Log::info("Found message template: " . substr($template, 0, 100) . "...");
-                        return $template;
+                        Log::info("Raw message template from Google Sheets: " . $template);
+
+                        // Ensure template is a string, not JSON
+                        if (is_string($template)) {
+                            Log::info("Template is already a string, using as-is");
+                            return $template;
+                        } elseif (is_array($template) || is_object($template)) {
+                            Log::info("Template is array/object, converting to string");
+                            return json_encode($template);
+                        } else {
+                            Log::info("Template type: " . gettype($template) . ", converting to string");
+                            return (string) $template;
+                        }
                     } else {
                         Log::warning("Blasting type '{$blastingType}' not found in product row");
                         Log::info("Available columns: " . implode(', ', array_keys($row)));
@@ -1884,7 +1934,6 @@ class GoogleSheetController extends Controller
 
             Log::warning("Product '{$produk}' not found in settings data");
             return null;
-
         } catch (\Exception $e) {
             Log::error("Error getting message template: " . $e->getMessage());
             return null;
@@ -1958,7 +2007,6 @@ class GoogleSheetController extends Controller
             }
 
             return [];
-
         } catch (\Exception $e) {
             Log::error("Error getting settings message data: " . $e->getMessage());
             return [];
@@ -1975,57 +2023,181 @@ class GoogleSheetController extends Controller
             $client = new Client();
             $client->setAuthConfig($path);
             $client->addScope([Drive::DRIVE_READONLY, Sheets::SPREADSHEETS_READONLY]);
-            
+
             $driveService = new Drive($client);
             $sheetsService = new Sheets($client);
 
-            Log::info("Reading Excel contacts from file: {$fileId}");
+            Log::info("Reading Excel contacts from file ID: {$fileId}");
 
             // Get file info to check if it's a Google Sheet or Excel file
             $fileInfo = $driveService->files->get($fileId);
             $mimeType = $fileInfo->getMimeType();
+            $fileName = $fileInfo->getName();
 
-            Log::info("File mime type: {$mimeType}");
+            Log::info("File info - Name: {$fileName}, MIME Type: {$mimeType}");
 
             if ($mimeType === 'application/vnd.google-apps.spreadsheet') {
                 // It's already a Google Sheet, read directly
+                Log::info("File is Google Sheets format, reading directly");
                 return $this->readGoogleSheetContacts($sheetsService, $fileId);
             } else {
                 // For Excel files, let's try a different approach
-                // Since we can't copy due to permissions, let's check if there's already a converted version
                 Log::info("File is Excel format, trying alternative approach");
-                
+
                 // Check if there's a corresponding Google Sheets version in the same folder
                 $fileName = $fileInfo->getName();
                 $parentFolders = $fileInfo->getParents();
-                
+
                 if (!empty($parentFolders)) {
                     $parentFolderId = $parentFolders[0];
-                    
+                    Log::info("Parent folder ID: {$parentFolderId}");
+
                     // Search for Google Sheets with similar name in same folder
-                    $searchQuery = "'{$parentFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and name contains 'Diky' and name contains 'Perkenalan' and trashed=false";
-                    
-                    Log::info("Searching for converted sheet with query: {$searchQuery}");
-                    
-                    $results = $driveService->files->listFiles([
-                        'q' => $searchQuery,
-                        'fields' => 'files(id,name,mimeType)'
-                    ]);
-                    
-                    $files = $results->getFiles();
-                    foreach ($files as $file) {
-                        if ($file->getMimeType() === 'application/vnd.google-apps.spreadsheet') {
-                            Log::info("Found Google Sheets version: " . $file->getName() . " (ID: " . $file->getId() . ")");
-                            return $this->readGoogleSheetContacts($sheetsService, $file->getId());
+                    // Make search more flexible - look for sheets with similar keywords
+                    $fileNameWithoutExt = pathinfo($fileName, PATHINFO_FILENAME);
+                    Log::info("Original Excel filename: {$fileNameWithoutExt}");
+
+                    // Try multiple search patterns
+                    $searchPatterns = [
+                        // Exact match without extension
+                        "name = '{$fileNameWithoutExt}' and mimeType='application/vnd.google-apps.spreadsheet'",
+                        // Contains CS name
+                        "name contains 'DIKY' and mimeType='application/vnd.google-apps.spreadsheet'",
+                        // Contains blasting type
+                        "name contains 'KONSUL 1' and mimeType='application/vnd.google-apps.spreadsheet'",
+                        // General search in folder
+                        "'{$parentFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false"
+                    ];
+
+                    foreach ($searchPatterns as $pattern) {
+                        Log::info("Trying search pattern: {$pattern}");
+
+                        $results = $driveService->files->listFiles([
+                            'q' => $pattern,
+                            'fields' => 'files(id,name,mimeType)'
+                        ]);
+
+                        $files = $results->getFiles();
+                        Log::info("Found " . count($files) . " files with pattern: {$pattern}");
+
+                        foreach ($files as $file) {
+                            Log::info("Found file: " . $file->getName() . " (ID: " . $file->getId() . ")");
+                            if ($file->getMimeType() === 'application/vnd.google-apps.spreadsheet') {
+                                Log::info("Found matching Google Sheets: " . $file->getName() . " (ID: " . $file->getId() . ")");
+                                return $this->readGoogleSheetContacts($sheetsService, $file->getId());
+                            }
+                        }
+
+                        // If we found files with this pattern, break
+                        if (!empty($files)) {
+                            break;
                         }
                     }
                 }
-                
-                // If no Google Sheets version found, create demo data for testing
-                Log::warning("No Google Sheets version found, creating demo data for testing");
+
+                // If no Google Sheets version found, try to read Excel file directly
+                Log::info("No Google Sheets version found, trying to read Excel file directly");
+
+                try {
+                    Log::info("Attempting to download and read Excel file directly");
+
+                    // Authorize client for download
+                    $client->fetchAccessTokenWithAssertion();
+                    $accessToken = $client->getAccessToken()['access_token'];
+
+                    // Download Excel file
+                    $url = "https://www.googleapis.com/drive/v3/files/{$fileId}?alt=media";
+
+                    $context = stream_context_create([
+                        'http' => [
+                            'header' => "Authorization: Bearer {$accessToken}",
+                        ]
+                    ]);
+
+                    $fileContent = file_get_contents($url, false, $context);
+
+                    if ($fileContent === false) {
+                        Log::error("Failed to download Excel file");
+                        return $this->createDemoContactsData();
+                    }
+
+                    // Save to temporary file
+                    $tempFile = tempnam(sys_get_temp_dir(), 'excel_') . '.xlsx';
+                    file_put_contents($tempFile, $fileContent);
+
+                    Log::info("Excel file downloaded to temporary location: {$tempFile}");
+
+                    // Read Excel file using Laravel Excel
+                    $data = Excel::toArray([], $tempFile);
+
+                    // Clean up temp file
+                    unlink($tempFile);
+
+                    if (empty($data)) {
+                        Log::warning("No data found in Excel file");
+                        return $this->createDemoContactsData();
+                    }
+
+                    // Get first sheet
+                    $sheetData = $data[0] ?? [];
+                    Log::info("Excel sheet contains " . count($sheetData) . " rows");
+
+                    if (empty($sheetData)) {
+                        Log::warning("Excel sheet is empty");
+                        return $this->createDemoContactsData();
+                    }
+
+                    // Get header from first row
+                    $header = $sheetData[0] ?? [];
+                    $rows = array_slice($sheetData, 1);
+
+                    Log::info("Excel headers: " . implode(', ', $header));
+                    Log::info("Excel data rows: " . count($rows));
+
+                    // Convert to contact format
+                    $contacts = [];
+                    foreach ($rows as $rowIndex => $row) {
+                        Log::info("Processing Excel row " . ($rowIndex + 1) . ": " . implode(' | ', $row));
+
+                        if (empty($row[0])) {
+                            Log::info("Skipping Excel row " . ($rowIndex + 1) . " - empty phone number");
+                            continue;
+                        }
+
+                        // Pad row to match header count
+                        $row = array_pad($row, count($header), '');
+
+                        $contact = [
+                            'phone' => $row[0] ?? '', // Phone Number (A)
+                            'nama_customer' => $row[1] ?? '', // Nama Customer (B)
+                            'produk' => $row[2] ?? '', // Produk (C)
+                            'no_resi' => $row[3] ?? '', // No. Resi (D)
+                            'last_promo' => $row[4] ?? '', // Last_Promo (E)
+                            'cs' => $row[5] ?? '', // CS (F)
+                            'nama_samaran' => $row[6] ?? '', // Nama Samaran (G)
+                            'jenis_blasting' => $row[7] ?? '', // Jenis Blasting (H)
+                            'cs_crm' => $row[8] ?? '', // CS CRM (I)
+                        ];
+
+                        if (!empty(trim($contact['phone']))) {
+                            $contacts[] = $contact;
+                            Log::info("Added Excel contact: Phone=" . $contact['phone'] . ", Name=" . $contact['nama_customer']);
+                        }
+                    }
+
+                    Log::info("Successfully read " . count($contacts) . " contacts from Excel file");
+
+                    if (!empty($contacts)) {
+                        return $contacts;
+                    }
+                } catch (\Exception $e) {
+                    Log::error("Error reading Excel file directly: " . $e->getMessage());
+                }
+
+                // If all attempts fail, use demo data
+                Log::warning("All attempts to read Excel file failed, using demo data");
                 return $this->createDemoContactsData();
             }
-
         } catch (\Exception $e) {
             Log::error("Error reading Excel contacts: " . $e->getMessage());
             // Return demo data for testing purposes
@@ -2039,31 +2211,36 @@ class GoogleSheetController extends Controller
     private function createDemoContactsData()
     {
         Log::info("Creating demo contacts data for testing");
-        
-        return [
+
+        $demoData = [
             [
                 'phone' => '628123456789',
-                'nama_customer' => 'Ibu Sari',
+                'nama_customer' => 'Kak Rani',
                 'produk' => 'ZYMUNO',
                 'no_resi' => 'ZYM123456',
                 'last_promo' => 'Promo Ramadan',
                 'cs' => 'DIKY',
                 'nama_samaran' => 'Mbak Dina',
-                'jenis_blasting' => 'PERKENALAN',
+                'jenis_blasting' => 'KONSUL 1',
                 'cs_crm' => 'Diky CRM'
             ],
             [
                 'phone' => '628234567890',
-                'nama_customer' => 'Bapak Andi',
+                'nama_customer' => 'Kak Sari',
                 'produk' => 'ZYMUNO',
                 'no_resi' => 'ZYM234567',
                 'last_promo' => 'Diskon Spesial',
                 'cs' => 'DIKY',
                 'nama_samaran' => 'Mbak Diana',
-                'jenis_blasting' => 'PERKENALAN',
+                'jenis_blasting' => 'KONSUL 1',
                 'cs_crm' => 'Diky CRM'
             ]
         ];
+
+        Log::info("Demo contacts data created: " . json_encode($demoData));
+        Log::info("Demo data contains " . count($demoData) . " contacts");
+
+        return $demoData;
     }
 
     /**
@@ -2075,14 +2252,14 @@ class GoogleSheetController extends Controller
             // Get first sheet name
             $spreadsheet = $sheetsService->spreadsheets->get($sheetId);
             $sheets = $spreadsheet->getSheets();
-            
+
             if (empty($sheets)) {
                 Log::warning("No sheets found in spreadsheet: {$sheetId}");
                 return [];
             }
-            
+
             $sheetName = $sheets[0]->getProperties()->getTitle();
-            Log::info("Reading from sheet: {$sheetName}");
+            Log::info("Reading contacts from Google Sheet - Sheet ID: {$sheetId}, Sheet Name: {$sheetName}");
 
             // Read header row (expected: Phone Number, Nama Customer, Produk, No. Resi, Last_Promo, CS, Nama Samaran, Jenis Blasting, CS CRM)
             $headerRange = "'{$sheetName}'!A1:I1";
@@ -2106,12 +2283,17 @@ class GoogleSheetController extends Controller
                 return [];
             }
 
-            Log::info("Found " . count($rows) . " data rows");
+            Log::info("Found " . count($rows) . " raw data rows in sheet: {$sheetName}");
 
             // Convert to associative array with proper field mapping
             $contacts = [];
-            foreach ($rows as $row) {
-                if (empty($row[0])) continue; // Skip empty phone number rows
+            foreach ($rows as $rowIndex => $row) {
+                Log::info("Processing row " . ($rowIndex + 1) . ": " . implode(' | ', $row));
+
+                if (empty($row[0])) {
+                    Log::info("Skipping row " . ($rowIndex + 1) . " - empty phone number");
+                    continue; // Skip empty phone number rows
+                }
 
                 // Pad row to match header count
                 $row = array_pad($row, count($headers), '');
@@ -2131,12 +2313,15 @@ class GoogleSheetController extends Controller
                 // Only add if phone number is not empty
                 if (!empty(trim($contact['phone']))) {
                     $contacts[] = $contact;
+                    Log::info("Added contact: Phone=" . $contact['phone'] . ", Name=" . $contact['nama_customer']);
+                } else {
+                    Log::info("Skipped contact - empty phone after trim");
                 }
             }
 
-            Log::info("Successfully parsed " . count($contacts) . " valid contacts");
+            Log::info("Successfully parsed " . count($contacts) . " valid contacts from sheet: {$sheetName}");
+            Log::info("Final contacts data: " . json_encode($contacts));
             return $contacts;
-
         } catch (\Exception $e) {
             Log::error("Error reading Google Sheet contacts: " . $e->getMessage());
             return [];
@@ -2159,8 +2344,32 @@ class GoogleSheetController extends Controller
                 }
             }
 
+            // Ensure message template is a string before encoding
+            if (is_array($messageTemplate) || is_object($messageTemplate)) {
+                $messageTemplate = json_encode($messageTemplate);
+            }
+
+            // If message template is already JSON, decode it first
+            $decodedTemplate = json_decode($messageTemplate, true);
+            if (json_last_error() === JSON_ERROR_NONE && is_string($decodedTemplate)) {
+                // It's already JSON-encoded string, use as-is for json_encode
+                Log::info("Message template is already JSON-encoded string");
+            } elseif (json_last_error() === JSON_ERROR_NONE && is_array($decodedTemplate)) {
+                // It's a JSON object/array, encode it properly
+                $messageTemplate = json_encode($decodedTemplate);
+                Log::info("Message template was JSON object/array, re-encoded");
+            } else {
+                // It's a plain string, convert to MessageService format (array with 'text' key)
+                $messageTemplate = ['text' => $messageTemplate];
+                Log::info("Message template converted to MessageService format: " . json_encode($messageTemplate));
+            }
+
+            Log::info("Final message template for campaign: " . json_encode($messageTemplate));
+            Log::info("Message template type: " . gettype($messageTemplate));
+
             // Create campaign
             $campaign = Campaign::create([
+                'form_order_id' => $formOrderId,
                 'user_id' => $device->user_id,
                 'device_id' => $device->id,
                 'name' => "[{$formOrderId}] {$csName} - {$produk} - {$keteranganBlasting}",
@@ -2175,10 +2384,15 @@ class GoogleSheetController extends Controller
             // Create blasts for each contact (if contacts data available)
             if (!empty($contactsData)) {
                 $blasts = [];
+                Log::info("Creating blasts for " . count($contactsData) . " contacts");
+
                 foreach ($contactsData as $contact) {
                     // Format message with contact data
+                    Log::info("Processing contact for blast: " . json_encode($contact));
                     $formattedMessage = $this->formatMessageWithContactData($messageTemplate, $contact);
-                    
+
+                    Log::info("Final formatted message for blast: " . json_encode($formattedMessage));
+
                     $blasts[] = [
                         'user_id' => $device->user_id,
                         'sender' => $device->body, // Device body sebagai sender
@@ -2193,12 +2407,14 @@ class GoogleSheetController extends Controller
 
                 if (!empty($blasts)) {
                     $campaign->blasts()->createMany($blasts);
+                    Log::info("Successfully created " . count($blasts) . " blasts for campaign {$campaign->id}");
                 }
+            } else {
+                Log::warning("No contacts data available for creating blasts");
             }
 
             Log::info("Campaign created successfully: {$campaign->id}");
             return $campaign;
-
         } catch (\Exception $e) {
             Log::error("Error creating campaign: " . $e->getMessage());
             return null;
@@ -2210,13 +2426,28 @@ class GoogleSheetController extends Controller
      */
     private function formatMessageWithContactData($template, $contactData)
     {
+        Log::info("Formatting message template with contact data");
+        Log::info("Template type: " . gettype($template));
+        Log::info("Template content: " . json_encode($template));
+        Log::info("Contact data: " . json_encode($contactData));
+
+        // Handle different template formats
+        if (is_array($template) && isset($template['text'])) {
+            $messageText = $template['text'];
+            Log::info("Extracted message text from array: {$messageText}");
+        } elseif (is_string($template)) {
+            $messageText = $template;
+            Log::info("Template is already string: {$messageText}");
+        } else {
+            Log::error("Unknown template format: " . gettype($template));
+            return ['text' => 'Error: Invalid template format'];
+        }
+
         // Replace {{A}}, {{B}}, etc. with actual contact data
         // A = Phone Number, B = Nama Customer, C = Produk, D = No. Resi, etc.
-        $formatted = $template;
-        
         $columnMapping = [
             'A' => 'phone',
-            'B' => 'nama_customer', 
+            'B' => 'nama_customer',
             'C' => 'produk',
             'D' => 'no_resi',
             'E' => 'last_promo',
@@ -2226,11 +2457,47 @@ class GoogleSheetController extends Controller
             'I' => 'cs_crm'
         ];
 
+        $formatted = $messageText;
+
+        // Log original message before replacement
+        Log::info("Original message before replacement: {$formatted}");
+
+        // First, find all placeholders in the template
+        preg_match_all('/\{\{([A-Z])\}\}/', $formatted, $templateMatches);
+        $foundPlaceholders = $templateMatches[1] ?? [];
+        Log::info("Found placeholders in template: " . implode(', ', $foundPlaceholders));
+
         foreach ($columnMapping as $placeholder => $field) {
             $value = $contactData[$field] ?? '';
-            $formatted = str_replace("{{$placeholder}}", $value, $formatted);
+            $oldFormatted = $formatted;
+
+            // Replace all occurrences of the placeholder - use single quotes to avoid interpolation issues
+            $search = '{{' . $placeholder . '}}';
+            $formatted = str_replace($search, $value, $formatted);
+
+            if ($oldFormatted !== $formatted) {
+                Log::info("Replaced {{$placeholder}} with '{$value}'");
+            } else {
+                Log::info("No replacement needed for {{$placeholder}} (value: '{$value}')");
+            }
+        }        // Check for any remaining placeholders and log them
+        preg_match_all('/\{\{([A-Z])\}\}/', $formatted, $matches);
+        if (!empty($matches[1])) {
+            Log::warning("Unreplaced placeholders found: " . implode(', ', $matches[1]));
+            Log::warning("Message with unreplaced placeholders: {$formatted}");
+
+            // Also check for single curly braces that might indicate partial replacement
+            preg_match_all('/\{([^{}]*)\}/', $formatted, $singleMatches);
+            if (!empty($singleMatches[1])) {
+                Log::warning("Found single curly braces (possible partial replacement): " . implode(', ', $singleMatches[1]));
+            }
+        } else {
+            Log::info("All placeholders successfully replaced");
         }
 
-        return $formatted;
+        Log::info("Final formatted message: {$formatted}");
+
+        // Return in MessageService format (array with 'text' key)
+        return ['text' => $formatted];
     }
 }
