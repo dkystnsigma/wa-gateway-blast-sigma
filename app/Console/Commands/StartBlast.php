@@ -72,6 +72,7 @@ class StartBlast extends Command
                             Log::info("Campaign {$campaign->name} completed - No pending blasts remaining");
                             continue;
                         }
+
                         $blastdata = $pendingBlasts->map(function ($blast) {
                             Log::info("Preparing blast ID: {$blast->id}, Receiver: {$blast->receiver}");
                             return [
@@ -81,19 +82,25 @@ class StartBlast extends Command
                             ];
                         })->toArray();
 
+                        // Tambahkan delay minimum dan randomisasi
+                        $minDelay = max($campaign->delay, 60); // Minimal 60 detik
+                        $randomDelay = rand(30, 90); // Random 30-90 detik tambahan
+                        $finalDelay = $minDelay + $randomDelay;
 
                         $data = [
                             'data' => $blastdata,
                             'type' => $campaign->type,
-                            'delay' => $campaign->delay,
+                            'delay' => $finalDelay, // Gunakan delay yang sudah dihitung
                             'campaign_id' => $campaign->id,
                             'sender' => $campaign->device->body,
                         ];
 
+                        // Tambahkan jeda antar batch
+                        sleep(rand(10, 30));
 
                         try {
                             $res = $this->wa->startBlast($data);
-                            
+
                             if (isset($res->status) && $res->status === false && $res->message === 'Unauthorized') {
                                 $campaign->update(['status' => 'failed']);
                                 Log::error("Campaign {$campaign->id} failed: Unauthorized");
@@ -103,6 +110,8 @@ class StartBlast extends Command
                             Log::error("Failed to start blast for campaign {$campaign->id}: " . $e->getMessage());
                             for ($i = 0; $i < 3; $i++) {
                                 try {
+                                    // Tambahkan delay lebih lama saat retry
+                                    sleep(rand(60, 120));
                                     $res = $this->wa->startBlast($data);
                                     if (isset($res->status) && $res->status === false && $res->message === 'Unauthorized') {
                                         $campaign->update(['status' => 'failed']);
@@ -112,12 +121,11 @@ class StartBlast extends Command
                                     break;
                                 } catch (\Exception $e) {
                                     Log::error("Retry $i failed for campaign {$campaign->id}: " . $e->getMessage());
-                                    sleep(5);
+                                    sleep(rand(60, 180)); // Delay yang lebih lama untuk retry
                                 }
                             }
                         }
                     } catch (\Exception $e) {
-
                         Log::error("Failed to update campaign status or fetch pending blasts: " . $e->getMessage());
                         continue;
                     }
@@ -130,7 +138,7 @@ class StartBlast extends Command
         return $campaign
             ->blasts()
             ->where('status', 'pending')
-            ->limit(15)
+            ->limit(5) // Kurangi batch size dari 15 ke 5
             ->get();
     }
 }

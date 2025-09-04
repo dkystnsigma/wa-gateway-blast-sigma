@@ -188,7 +188,7 @@
                                             <td>
                                                 <div class="d-flex">
                                                     <a href="{{ route('connect-via-code', $number->body) }}"
-                                                        class="badge badge-info shadow btn-xs sharp me-1"
+                                                        class="btn btn-info shadow btn-xs sharp me-1"
                                                         data-bs-toggle="tooltip" data-bs-placement="bottom"
                                                         title="{{ __('Connect Via Code') }}"><i
                                                             class="bi bi-phone"></i></a>

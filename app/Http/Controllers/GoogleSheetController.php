@@ -2422,7 +2422,7 @@ class GoogleSheetController extends Controller
                 'status' => 'waiting',
                 'message' => json_encode($campaignMessage),
                 'schedule' => $scheduleTime,
-                'delay' => 5 // Default delay
+                'delay' => 60 // Default delay
             ]);
 
             // Create blasts for each contact (if contacts data available)

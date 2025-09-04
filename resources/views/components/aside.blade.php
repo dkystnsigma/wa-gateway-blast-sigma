@@ -5,7 +5,9 @@
                 <img src="{{ asset('assets/images/logo-sigma.png') }}" class="logo-icon" alt="logo icon">
             </div>
             <div>
-                <h4 class="logo-text">{{ __('WAB ') }}v{{ config('app.version') }}</h4>
+                <h4 class="logo-text">{{ __('WAB ') }}
+                    {{-- v{{ config('app.version') }} --}}
+                </h4>
             </div>
             <div class="toggle-icon ms-auto"> <i class="bi bi-list"></i>
             </div>
