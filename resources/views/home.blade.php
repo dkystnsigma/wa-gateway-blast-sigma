@@ -116,7 +116,7 @@
                                     <th class="text-nowrap">{{ __('Reject Call') }}</th>
                                     <th>{{ __('Online') }}</th>
                                     <th>{{ __('Typing') }} (WH)</th>
-
+                                    <th>{{ __('Active') }}</th>
                                     <th>{{ __('Sent') }}</th>
                                     <th>{{ __('status') }}</th>
                                     <th>{{ __('Action') }}</th>
@@ -176,6 +176,16 @@
                                                         {{ $number['wh_typing'] ? 'checked' : '' }} />
                                                     <label class="form-check-label"
                                                         for="toggle-switch">{{ $number['webhook_typing'] ? 'Yes' : 'No' }}</label>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <div class="form-check form-switch">
+                                                    <input data-url="{{ route('setIsActive') }}"
+                                                        class="form-check-input toggle-is-active" type="checkbox"
+                                                        data-id="{{ $number['body'] }}"
+                                                        {{ $number['is_active'] ? 'checked' : '' }} />
+                                                    <label class="form-check-label"
+                                                        for="toggle-switch">{{ $number['is_active'] ? 'Yes' : 'No' }} </label>
                                                 </div>
                                             </td>
 
@@ -424,6 +434,38 @@
                 if (!result.error) {
                     // find label
                     let label = $(`.toggle-typing[data-id=${dataId}]`)
+                        .parent()
+                        .find("label");
+                    // change label
+                    if (isChecked) {
+                        label.text("{{ __('Yes') }}");
+                    } else {
+                        label.text("{{ __('No') }}");
+                    }
+                    toastr['success'](result.msg);
+                }
+            },
+        });
+    });
+
+    $(".toggle-is-active").on("click", function() {
+        let dataId = $(this).data("id");
+        let isChecked = $(this).is(":checked");
+        let url = $(this).data("url");
+        $.ajax({
+            url: url,
+            type: "POST",
+            headers: {
+                "X-CSRF-TOKEN": $('meta[name="csrf-token"]').attr("content"),
+            },
+            data: {
+                is_active: isChecked ? 1 : 0,
+                id: dataId,
+            },
+            success: function(result) {
+                if (!result.error) {
+                    // find label
+                    let label = $(`.toggle-is-active[data-id=${dataId}]`)
                         .parent()
                         .find("label");
                     // change label

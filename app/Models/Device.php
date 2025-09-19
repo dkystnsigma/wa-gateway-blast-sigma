@@ -8,7 +8,22 @@ use Illuminate\Database\Eloquent\Model;
 class Device extends Model
 {
     use HasFactory;
-    protected $fillable = ['user_id', 'name', 'body', 'webhook', 'status', 'message_sent'];
+    protected $fillable = [
+        'user_id',
+        'name',
+        'body',
+        'webhook',
+        'status',
+        'message_sent',
+        'is_active',
+        'wh_read',
+        'wh_typing',
+        'delay',
+        'set_available',
+        'gptkey',
+        'geminikey',
+        'reject_call'
+    ];
 
     public function user()
     {
@@ -24,7 +39,4 @@ class Device extends Model
     {
         return $this->hasMany(Campaign::class);
     }
-
-
-    
 }

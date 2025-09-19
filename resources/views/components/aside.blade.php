@@ -23,6 +23,32 @@
                 </a>
 
             </li>
+            <li class="nav-title"><span class="ps-3 py-2">Campaign </span></li>
+            {{-- Campaign --}}
+            <li class="{{ request()->is('panel.campaign.create') ? 'active' : '' }}">
+                <a href="{{ route('panel.campaign.create') }}">
+                    <div class="parent-icon"><i class="bi bi-send"></i>
+                    </div>
+                    <div class="menu-title">{{ __('Buat Campaign') }}</div>
+                </a>
+            </li>
+
+            <li class="{{ request()->is('panel.campaigns') ? 'active' : '' }}">
+                <a href="{{ route('panel.campaigns') }}">
+                    <div class="parent-icon"><i class="bi bi-table"></i>
+                    </div>
+                    <div class="menu-title">{{ __('Data Campaign') }}</div>
+                </a>
+            </li>
+
+            <li class="{{ request()->is('order.create') ? 'active' : '' }}">
+                <a href="{{ route('order.create') }}">
+                    <div class="parent-icon"><i class="bi bi-plus"></i>
+                    </div>
+                    <div class="menu-title">{{ __('Form Order') }}</div>
+                </a>
+            </li>
+            <li class="nav-title"><span class="ps-3 py-2">Data Base </span></li>
             {{-- file manager --}}
             <li class="{{ request()->is('file-manager') ? 'active' : '' }}">
                 <a href="{{ route('file-manager') }}">

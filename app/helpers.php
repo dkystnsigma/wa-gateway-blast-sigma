@@ -100,3 +100,109 @@ if (!function_exists('redirectWithFlash')) {
         return redirect($url)->with('alert', ['type' => $type, 'msg' => $message]);
     }
 }
+
+if (!function_exists('logBlast')) {
+    function logBlast($message, $level = 'info', $context = [])
+    {
+        try {
+            // Buat folder blast jika belum ada
+            $basePath = function_exists('storage_path') ? storage_path('logs/blast') : dirname(__DIR__) . '/storage/logs/blast';
+            if (!file_exists($basePath)) {
+                mkdir($basePath, 0755, true);
+            }
+            
+            // Set timezone sesuai config Laravel atau default ke Asia/Jakarta
+            $timezone = 'Asia/Jakarta';
+            if (function_exists('config')) {
+                $timezone = config('app.timezone', 'Asia/Jakarta');
+            }
+            
+            // Format tanggal dan waktu dengan timezone yang benar
+            $dateTime = new DateTime('now', new DateTimeZone($timezone));
+            $date = $dateTime->format('Y-m-d');
+            $timestamp = $dateTime->format('Y-m-d H:i:s');
+            
+            $logFile = $basePath . '/' . $date . '.log';
+            
+            // Format log message
+            $levelUpper = strtoupper($level);
+            $contextStr = !empty($context) ? ' ' . json_encode($context, JSON_UNESCAPED_SLASHES) : '';
+            $logEntry = "[{$timestamp}] local.{$levelUpper}: {$message}{$contextStr}" . PHP_EOL;
+            
+            // Tulis ke file (append mode)
+            file_put_contents($logFile, $logEntry, FILE_APPEND | LOCK_EX);
+            
+            return true;
+        } catch (\Exception $e) {
+            // Fallback ke error_log PHP biasa jika gagal
+            error_log("Failed to write blast log: " . $e->getMessage());
+            return false;
+        }
+    }
+}
+
+if (!function_exists('getBlastLogPath')) {
+    function getBlastLogPath($date = null)
+    {
+        $basePath = function_exists('storage_path') ? storage_path('logs/blast') : dirname(__DIR__) . '/storage/logs/blast';
+        
+        // Set timezone sesuai config Laravel atau default ke Asia/Jakarta
+        $timezone = 'Asia/Jakarta';
+        if (function_exists('config')) {
+            $timezone = config('app.timezone', 'Asia/Jakarta');
+        }
+        
+        if ($date) {
+            $targetDate = $date;
+        } else {
+            $dateTime = new DateTime('now', new DateTimeZone($timezone));
+            $targetDate = $dateTime->format('Y-m-d');
+        }
+        
+        return $basePath . '/' . $targetDate . '.log';
+    }
+}
+
+if (!function_exists('getBlastTimezone')) {
+    function getBlastTimezone()
+    {
+        return function_exists('config') ? config('app.timezone', 'Asia/Jakarta') : 'Asia/Jakarta';
+    }
+}
+
+if (!function_exists('getBlastCurrentTime')) {
+    function getBlastCurrentTime($format = 'Y-m-d H:i:s')
+    {
+        $timezone = getBlastTimezone();
+        $dateTime = new DateTime('now', new DateTimeZone($timezone));
+        return $dateTime->format($format);
+    }
+}
+
+if (!function_exists('logBlastInfo')) {
+    function logBlastInfo($message, $context = [])
+    {
+        return logBlast($message, 'info', $context);
+    }
+}
+
+if (!function_exists('logBlastWarning')) {
+    function logBlastWarning($message, $context = [])
+    {
+        return logBlast($message, 'warning', $context);
+    }
+}
+
+if (!function_exists('logBlastError')) {
+    function logBlastError($message, $context = [])
+    {
+        return logBlast($message, 'error', $context);
+    }
+}
+
+if (!function_exists('logBlastDebug')) {
+    function logBlastDebug($message, $context = [])
+    {
+        return logBlast($message, 'debug', $context);
+    }
+}

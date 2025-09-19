@@ -129,6 +129,12 @@ class GoogleSheetController extends Controller
                 $dataRange = "'{$sheetName}'!A2:Z";
                 $dataResponse = $service->spreadsheets_values->get($spreadsheetId, $dataRange);
                 $values = $dataResponse->getValues();
+                $filteredValues = array_filter($values, function ($row) {
+                    return !isset($row[15]) || trim($row[15]) === '' || trim($row[15]) === 'FALSE';
+                });
+
+                $values = $filteredValues;
+                // dd($values);
 
                 if (empty($values)) {
                     return view('sheet.form-order', [
@@ -182,12 +188,12 @@ class GoogleSheetController extends Controller
 
                     $row['device_status'] = 'unknown';
                     $row['row_class'] = 'table-secondary'; // Default gray for unknown
-
+                    // dd($deviceName);
                     if (!empty($deviceName)) {
                         $device = Device::where('name', $deviceName)->first();
                         if ($device) {
                             // Case-insensitive comparison for 'connected' status
-                            if (strtolower(trim($device->status)) === 'connected') {
+                            if (strtolower(trim($device->status)) === 'connected' && $device->is_active == 1) {
                                 $row['device_status'] = 'connected';
                                 $row['row_class'] = ''; // Normal row (no additional class)
 
@@ -890,7 +896,7 @@ class GoogleSheetController extends Controller
 
         // Jika tidak ada folderId, gunakan folder ID dari URL yang diberikan
         if ($folderId === null) {
-            $folderId = '1KpTis-ivCj_btNU8DsWoe8kKEIviiqGf'; // ID dari URL yang diberikan
+            $folderId = '15wnQzKz6z64r2owrXdoR8J-QvL42BuxW'; // ID dari URL yang diberikan
         }
 
         try {
@@ -1753,17 +1759,41 @@ class GoogleSheetController extends Controller
 
             Log::info("Starting auto-campaign creation for form_order_id: {$formOrderId}, CS: {$csName}, Produk: {$produk}, Blasting: {$keteranganBlasting}");
 
-            // 1. Find CS folder in Google Drive
-            $csFolderId = $this->findCsFolder($csName);
-            if (!$csFolderId) {
-                Log::warning("CS folder not found for: {$csName}");
-                return;
+            // 1. Find CS folder in Google Drive and the matching Excel file
+            $path = storage_path('app/credentials/sigma-data-center.json');
+            $client = new Client();
+            $client->setAuthConfig($path);
+            $client->addScope(Drive::DRIVE_READONLY);
+            $driveService = new Drive($client);
+
+            // Get all CS folders
+            $query = "name contains '{$csName}' and mimeType='application/vnd.google-apps.folder' and trashed=false";
+            $results = $driveService->files->listFiles([
+                'q' => $query,
+                'fields' => 'files(id,name)'
+            ]);
+
+            $folders = $results->getFiles();
+            Log::info("Found " . count($folders) . " folders containing '{$csName}'");
+
+            $csFolderId = null;
+            $excelFileId = null;
+
+            // Try each folder until we find one with the required file
+            foreach ($folders as $folder) {
+                Log::info("Checking folder: " . $folder->getName() . " (ID: " . $folder->getId() . ")");
+                
+                $tempExcelFileId = $this->findExcelFileInFolder($folder->getId(), $keteranganBlasting);
+                if ($tempExcelFileId) {
+                    Log::info("Found Excel file in folder: " . $folder->getName());
+                    $csFolderId = $folder->getId();
+                    $excelFileId = $tempExcelFileId;
+                    break;
+                }
             }
 
-            // 2. Find Excel file containing blasting type
-            $excelFileId = $this->findExcelFileInFolder($csFolderId, $keteranganBlasting);
-            if (!$excelFileId) {
-                Log::warning("Excel file not found for CS: {$csName}, Blasting: {$keteranganBlasting}");
+            if (!$csFolderId || !$excelFileId) {
+                Log::warning("Excel file not found for CS: {$csName}, Blasting: {$keteranganBlasting} in any folder");
                 return;
             }
 
@@ -1803,7 +1833,7 @@ class GoogleSheetController extends Controller
     }
 
     /**
-     * Find CS folder in Google Drive
+     * Find CS folder in Google Drive - Updated to check all matching folders
      */
     private function findCsFolder($csName)
     {
@@ -1830,6 +1860,9 @@ class GoogleSheetController extends Controller
                 foreach ($files as $file) {
                     Log::info("Found CS folder: " . $file->getName() . " (ID: " . $file->getId() . ")");
                 }
+                
+                // Instead of using first folder, return all folder IDs for checking
+                // Return the first folder ID for now, but we'll modify the calling code
                 Log::info("Using first folder: " . $files[0]->getName());
                 return $files[0]->getId();
             }
@@ -1856,31 +1889,41 @@ class GoogleSheetController extends Controller
 
             Log::info("Searching for Excel file in folder: {$folderId}, blasting type: {$blastingType}");
 
-            // Search for files in folder containing blasting type
-            $query = "'{$folderId}' in parents and name contains '{$blastingType}' and trashed=false";
-            $results = $driveService->files->listFiles([
-                'q' => $query,
-                'fields' => 'files(id,name,mimeType)'
-            ]);
+            // Buat variasi pencarian yang lebih fleksibel
+            $searchVariations = [
+                $blastingType, // Original
+                str_replace(' ', '', $blastingType), // Tanpa spasi
+                strtolower($blastingType), // Huruf kecil
+                ucfirst(strtolower($blastingType)), // Title case
+                str_replace('TIPS', 'TIP', $blastingType), // Singular
+            ];
 
-            $files = $results->getFiles();
-            Log::info("Found " . count($files) . " files in folder {$folderId} containing '{$blastingType}'");
+            foreach ($searchVariations as $searchTerm) {
+                $query = "'{$folderId}' in parents and name contains '{$searchTerm}' and trashed=false";
+                $results = $driveService->files->listFiles([
+                    'q' => $query,
+                    'fields' => 'files(id,name,mimeType)'
+                ]);
 
-            foreach ($files as $file) {
-                Log::info("File found: " . $file->getName() . " (ID: " . $file->getId() . ", Type: " . $file->getMimeType() . ")");
+                $files = $results->getFiles();
+                Log::info("Found " . count($files) . " files with search term '{$searchTerm}'");
 
-                // Check if it's Excel file
-                if (in_array($file->getMimeType(), [
-                    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                    'application/vnd.ms-excel',
-                    'application/vnd.google-apps.spreadsheet'
-                ])) {
-                    Log::info("Found matching Excel/Google Sheets file: " . $file->getName());
-                    return $file->getId();
+                foreach ($files as $file) {
+                    Log::info("File found: " . $file->getName() . " (ID: " . $file->getId() . ", Type: " . $file->getMimeType() . ")");
+
+                    // Check if it's Excel file
+                    if (in_array($file->getMimeType(), [
+                        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                        'application/vnd.ms-excel',
+                        'application/vnd.google-apps.spreadsheet'
+                    ])) {
+                        Log::info("Found matching Excel/Google Sheets file: " . $file->getName());
+                        return $file->getId();
+                    }
                 }
             }
 
-            Log::warning("No Excel/Google Sheets file found containing '{$blastingType}' in folder {$folderId}");
+            Log::warning("No Excel/Google Sheets file found for any variation of '{$blastingType}' in folder {$folderId}");
             return null;
         } catch (\Exception $e) {
             Log::error("Error finding Excel file: " . $e->getMessage());
@@ -1895,7 +1938,6 @@ class GoogleSheetController extends Controller
     {
         try {
             Log::info("Getting message template for Produk: {$produk}, Blasting: {$blastingType}, Tim: {$tim}");
-
             // Read TIM JOGJA sheet data directly
             $settingsData = $this->getSettingsMessageData('TIM JOGJA');
 
@@ -1906,28 +1948,42 @@ class GoogleSheetController extends Controller
 
             // Find product row and blasting column
             foreach ($settingsData as $row) {
-                if (isset($row['PRODUK']) && strtoupper(trim($row['PRODUK'])) === strtoupper(trim($produk))) {
-                    Log::info("Found product row for: {$produk}");
+                if (isset($row['PRODUK'])) {
+                    $produkValue = strtoupper(trim($row['PRODUK']));
 
-                    // Found product row, now find blasting type column
-                    if (isset($row[$blastingType])) {
-                        $template = $row[$blastingType];
-                        Log::info("Raw message template from Google Sheets: " . $template);
+                    // Skip rows that are just descriptions (e.g., "JAM ETAWALIN")
+                    if ($produkValue === 'JAM ETAWALIN') {
+                        Log::info("Skipping description row: {$row['PRODUK']}");
+                        continue;
+                    }
 
-                        // Ensure template is a string, not JSON
-                        if (is_string($template)) {
-                            Log::info("Template is already a string, using as-is");
-                            return $template;
-                        } elseif (is_array($template) || is_object($template)) {
-                            Log::info("Template is array/object, converting to string");
-                            return json_encode($template);
+                    // Check for product match (flexible substring match)
+                    if (stripos($produkValue, strtoupper(trim($produk))) !== false) {
+                        Log::info("Found product row for: {$produk} (matched in: " . $row['PRODUK'] . ")");
+
+                        // Found product row, now find blasting type column
+                        if (isset($row[$blastingType])) {
+                            $template = $row[$blastingType];
+                            Log::info("Raw message template from Google Sheets: " . $template);
+
+                            // Ensure template is a string, not JSON
+                            if (is_string($template)) {
+                                Log::info("Template is already a string, using as-is");
+                                return $template;
+                            } elseif (is_array($template) || is_object($template)) {
+                                Log::info("Template is array/object, converting to string");
+                                return json_encode($template);
+                            } else {
+                                Log::info("Template type: " . gettype($template) . ", converting to string");
+                                return (string) $template;
+                            }
                         } else {
-                            Log::info("Template type: " . gettype($template) . ", converting to string");
-                            return (string) $template;
+                            Log::warning("Blasting type '{$blastingType}' not found in product row");
+                            Log::info("Available columns: " . implode(', ', array_keys($row)));
                         }
-                    } else {
-                        Log::warning("Blasting type '{$blastingType}' not found in product row");
-                        Log::info("Available columns: " . implode(', ', array_keys($row)));
+
+                        // Break after first match to take only the first one
+                        break;
                     }
                 }
             }
@@ -2335,9 +2391,19 @@ class GoogleSheetController extends Controller
     {
         try {
             // Parse schedule time
-            $scheduleTime = now();
-            if (!empty($waktuBlasting)) {
+            $scheduleTime = now(); // Default to current time if parsing fails
+            if (!empty($tanggal) && !empty($waktuBlasting)) {
                 try {
+                    // Assuming $tanggal is in 'Y-m-d' format and $waktuBlasting is 'H.i.s'
+                    // Combine them into a single datetime string
+                    $datetimeString = $tanggal . ' ' . $waktuBlasting;
+                    $scheduleTime = \Carbon\Carbon::createFromFormat('Y-m-d H.i.s', $datetimeString);
+                } catch (\Exception $e) {
+                    Log::warning("Could not parse date and time: {$tanggal} {$waktuBlasting}, using current time");
+                }
+            } elseif (!empty($waktuBlasting)) {
+                try {
+                    // Fallback to time only if date is missing
                     $scheduleTime = \Carbon\Carbon::createFromFormat('H.i.s', $waktuBlasting);
                 } catch (\Exception $e) {
                     Log::warning("Could not parse waktu blasting: {$waktuBlasting}");
@@ -2419,7 +2485,7 @@ class GoogleSheetController extends Controller
                 'name' => "[{$formOrderId}] {$csName} - {$produk} - {$keteranganBlasting}",
                 'phonebook_id' => 1, // Default phonebook
                 'type' => $campaignType, // Use determined campaign type
-                'status' => 'waiting',
+                'status' => 'Paused',
                 'message' => json_encode($campaignMessage),
                 'schedule' => $scheduleTime,
                 'delay' => 60 // Default delay
@@ -2641,7 +2707,6 @@ class GoogleSheetController extends Controller
 
             Log::warning("No image file found matching CS name: {$csName} in folder: {$kontenPath}");
             return null;
-
         } catch (\Exception $e) {
             Log::error("Error searching for image file: " . $e->getMessage());
             return null;

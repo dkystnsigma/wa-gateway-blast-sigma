@@ -16,7 +16,7 @@ class CampaignController extends Controller
             return $q->where('status', 'success');
         }])->withCount(['blasts as blasts_failed' => function ($q) {
             return $q->where('status', 'failed');
-        }])->with('device')->filter($request)->latest()->paginate(10);
+        }])->with('device')->filter($request)->orderBy('schedule', 'asc')->paginate(10);
         
         return view('pages.campaign.index', compact('campaigns'));
     }
@@ -148,4 +148,25 @@ class CampaignController extends Controller
         }
         return json_encode(['error' => false, 'msg' => 'Campaign deleted',]);
     }
+
+    
+    public function indexPanel(Request $request)
+    {
+        $campaigns = $request->user()->campaigns()->withCount(['blasts', 'blasts as blasts_pending' => function ($q) {
+            return $q->where('status', 'pending');
+        }])->withCount(['blasts as blasts_success' => function ($q) {
+            return $q->where('status', 'success');
+        }])->withCount(['blasts as blasts_failed' => function ($q) {
+            return $q->where('status', 'failed');
+        }])->with('device')->filter($request)->orderBy('schedule', 'asc')->paginate(10);
+        
+        return view('pages.panel-campaign.index', compact('campaigns'));
+    }
+
+    public function createPanel(Request $request)
+    {
+        $numbers = \App\Models\Device::all();
+        return view('pages.panel-campaign.create', compact('numbers'));
+    }
+
 }

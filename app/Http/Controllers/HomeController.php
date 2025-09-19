@@ -109,6 +109,18 @@ class HomeController extends Controller
         return response()->json(['error' => false, 'msg' => __('Webhook typing has been updated')]);
     }
 
+    public function setIsActive(Request $request)
+    {
+        $is_active = $request->input('is_active', 1); 
+        if (!in_array($is_active, [0, 1])) {
+            return response()->json(['error' => true, 'msg' => 'Invalid is_active value. Must be 0 or 1.']);
+        }
+
+        clearCacheNode("deviceAll:$request->id", 3);
+        $request->user()->devices()->whereBody($request->id)->update(['is_active' => $is_active]);
+        return response()->json(['error' => false, 'msg' => __('Device status has been updated')]);
+    }
+
     public function setAvailable(Request $request)
     {
 

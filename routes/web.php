@@ -11,8 +11,10 @@ use App\Http\Controllers\ContactController;
 use App\Http\Controllers\FileManagerController;
 use App\Http\Controllers\GoogleSheetController;
 use App\Http\Controllers\HomeController;
+use App\Http\Controllers\MessageMonitorController;
 use App\Http\Controllers\MessagesController;
 use App\Http\Controllers\MessagesHistoryController;
+use App\Http\Controllers\OrderController;
 use App\Http\Controllers\PluginController;
 use App\Http\Controllers\RegisterController;
 use App\Http\Controllers\RestapiController;
@@ -50,6 +52,7 @@ Route::group(
             Route::post('/home/sethookread', [HomeController::class, 'setHookRead'])->name('setHookRead');
             Route::post('/home/sethookreject', [HomeController::class, 'setHookReject'])->name('setHookReject');
             Route::post('/home/sethooktyping', [HomeController::class, 'setHookTyping'])->name('setHookTyping');
+            Route::post('/home/setIsActive', [HomeController::class, 'setIsActive'])->name('setIsActive');
             Route::post('/home', [HomeController::class, 'store'])->name('addDevice');
             Route::delete('/home', [HomeController::class, 'destroy'])->name('deleteDevice');
 
@@ -144,6 +147,27 @@ Route::group(
             Route::post('/google/convert-excel/{fileId}', [GoogleSheetController::class, 'convertExcelToSheets'])->name('google.convert.excel');
             Route::get('/google/form-order', [GoogleSheetController::class, 'readFormOrder'])->name('google.form.order');
             Route::get('/google/form-order/{sheetName}', [GoogleSheetController::class, 'readFormOrder'])->name('google.form.order.sheet');
+
+        
+            Route::get('/messagemonitor', [MessageMonitorController::class, 'index'])->name('messagemonitor');
+            Route::get('/monitor/messages', [MessageMonitorController::class, 'getMessages']);
+            Route::post('/monitor/mark-read', [MessageMonitorController::class, 'markAsRead']);
+
+            
+            Route::get('/panel-campaigns', [CampaignController::class, 'indexPanel'])->name('panel.campaigns');
+            Route::get('/panel-campaign/create', [CampaignController::class, 'createPanel'])->name('panel.campaign.create');
+            Route::post('/panel-campaign/store', [CampaignController::class, 'storePanel'])->name('panel.campaign.store');
+            Route::post('/panel-campaign/pause/{id}', [CampaignController::class, 'pausePanel'])->name('panel.campaign.pause');
+            Route::post('/panel-campaign/resume/{id}', [CampaignController::class, 'resumePanel'])->name('panel.campaign.resume');
+            Route::delete('/panel-campaign/delete/{id}', [CampaignController::class, 'destroyPanel'])->name('panel.campaign.delete');
+            Route::get('/panel-campaign/show/{id}', [CampaignController::class, 'showPanel'])->name('panel.campaign.show');
+            Route::delete('/panel-campaign/clear', [CampaignController::class, 'destroyAllPanels'])->name('panel.campaigns.delete.all');
+
+            Route::get('/order/create', [OrderController::class, 'create'])->name('order.create');
+            Route::get('/order/json-setting/{sheetName?}', [OrderController::class, 'getJsonSetting'])->name('order.json.setting');
+            Route::get('/order/json-folder-cs/{folderId?}', [OrderController::class, 'getJsonFolderCS'])->name('order.json.folder.cs');
+            Route::get('/order/json-read-excel/{fileId}', [OrderController::class, 'getJsonReadExcelFile'])->name('order.json.read.excel');
+            Route::post('/order/store', [OrderController::class, 'store'])->name('order.store');
         });
 
         Route::middleware('guest')->group(function () {
@@ -160,3 +184,5 @@ Route::group(
         Route::post('/settings/activate_license', [SettingController::class, 'activate_license'])->name('activateLicense');
     }
 );
+
+Route::get('/general-order/create', [OrderController::class, 'createGeneral'])->name('general.order.create');
